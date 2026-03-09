@@ -28,7 +28,6 @@ jobs:
           cat > fetch-stats.js << 'EOF'
           const fs = require('fs');
 
-          // Helper with timeout
           async function fetchWithTimeout(url, options, timeout = 15000) {
             const controller = new AbortController();
             const id = setTimeout(() => controller.abort(), timeout);
@@ -42,131 +41,134 @@ jobs:
             }
           }
 
+          // 1. YOUTUBE - Official API
           async function fetchYouTube() {
             try {
-              // FIXED: Removed space after id=
               const url = `https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${process.env.YOUTUBE_CHANNEL_ID}&key=${process.env.YOUTUBE_API_KEY}`;
-              console.log('YouTube URL:', url.replace(process.env.YOUTUBE_API_KEY, '***'));
+              console.log('📺 YouTube: Fetching...');
               
               const res = await fetchWithTimeout(url, {}, 10000);
-              console.log('YouTube status:', res.status);
+              console.log('📺 YouTube: Status', res.status);
               
               if (!res.ok) {
                 const text = await res.text();
-                console.error('YouTube error body:', text);
+                console.error('📺 YouTube Error:', text.substring(0, 200));
                 throw new Error(`HTTP ${res.status}`);
               }
               
               const data = await res.json();
-              
               if (!data.items || data.items.length === 0) {
-                throw new Error('No channel found - check CHANNEL_ID');
+                throw new Error('No channel found');
               }
               
               const stats = data.items[0].statistics;
-              return {
+              const result = {
                 subscribers: parseInt(stats.subscriberCount),
                 views: parseInt(stats.viewCount),
                 videos: parseInt(stats.videoCount)
               };
+              console.log('📺 YouTube: ✅', result.subscribers, 'subscribers');
+              return result;
             } catch (e) {
-              console.error('❌ YouTube error:', e.message);
+              console.error('📺 YouTube: ❌', e.message);
               return null;
             }
           }
 
+          // 2. INSTAGRAM - RapidAPI (instagram120.p.rapidapi.com)
           async function fetchInstagram() {
             try {
-              // FIXED: Using correct RapidAPI endpoint format
-              // Note: This endpoint might need adjustment based on exact API specs
-              const url = `https://instagram-scraper-stable-api.p.rapidapi.com/following_list_v2?username=${process.env.INSTAGRAM_USERNAME}`;
-              
-              console.log('Instagram URL:', url);
+              const url = 'https://instagram120.p.rapidapi.com/api/instagram/userInfo';
+              console.log('📸 Instagram: Fetching...');
               
               const res = await fetchWithTimeout(url, {
                 method: 'POST',
                 headers: {
-                  'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-                  'x-rapidapi-host': 'instagram-scraper-stable-api.p.rapidapi.com',
-                  'Content-Type': 'application/json'
+                  'Content-Type': 'application/json',
+                  'x-rapidapi-host': 'instagram120.p.rapidapi.com',
+                  'x-rapidapi-key': process.env.RAPIDAPI_KEY
                 },
-                body: JSON.stringify({})  // Some APIs require empty body
+                body: JSON.stringify({
+                  username: process.env.INSTAGRAM_USERNAME
+                })
               }, 15000);
               
-              console.log('Instagram status:', res.status);
+              console.log('📸 Instagram: Status', res.status);
               
               if (!res.ok) {
                 const text = await res.text();
-                console.error('Instagram error body:', text.substring(0, 500));
+                console.error('📸 Instagram Error:', text.substring(0, 200));
                 throw new Error(`HTTP ${res.status}`);
               }
               
               const data = await res.json();
-              console.log('Instagram response:', JSON.stringify(data).substring(0, 500));
               
-              // Try different response formats
-              let followers = null;
-              if (data.followers_count) followers = data.followers_count;
-              else if (data.data?.follower_count) followers = data.data.follower_count;
-              else if (data.result?.followers) followers = data.result.followers;
-              else if (data.user?.follower_count) followers = data.user.follower_count;
-              else if (data.followers) followers = data.followers;
-              
-              if (!followers) {
-                console.log('Available keys:', Object.keys(data));
-                throw new Error('Follower count not found in response');
+              // Parse response - follower_count is at result.user.follower_count
+              if (!data.result || !data.result.user) {
+                console.log('📸 Instagram: Response keys:', Object.keys(data));
+                throw new Error('Unexpected response format');
               }
               
-              return { followers: parseInt(followers) };
+              const user = data.result.user;
+              const result = {
+                followers: parseInt(user.follower_count),
+                following: parseInt(user.following_count),
+                posts: parseInt(user.media_count),
+                username: user.username,
+                is_verified: user.is_verified
+              };
+              console.log('📸 Instagram: ✅', result.followers, 'followers');
+              return result;
             } catch (e) {
-              console.error('❌ Instagram error:', e.message);
+              console.error('📸 Instagram: ❌', e.message);
               return null;
             }
           }
 
+          // 3. TIKTOK - RapidAPI (tiktok-api23.p.rapidapi.com)
           async function fetchTikTok() {
             try {
-              // FIXED: Using correct RapidAPI endpoint format
-              const url = `https://tiktok-api.p.rapidapi.com/get-user-followers?username=${process.env.TIKTOK_USERNAME}`;
-              
-              console.log('TikTok URL:', url);
+              const url = `https://tiktok-api23.p.rapidapi.com/api/user/info?uniqueId=${process.env.TIKTOK_USERNAME}`;
+              console.log('🎵 TikTok: Fetching...');
               
               const res = await fetchWithTimeout(url, {
                 method: 'GET',
                 headers: {
-                  'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-                  'x-rapidapi-host': 'tiktok-api.p.rapidapi.com'
+                  'x-rapidapi-host': 'tiktok-api23.p.rapidapi.com',
+                  'x-rapidapi-key': process.env.RAPIDAPI_KEY
                 }
               }, 15000);
               
-              console.log('TikTok status:', res.status);
+              console.log('🎵 TikTok: Status', res.status);
               
               if (!res.ok) {
                 const text = await res.text();
-                console.error('TikTok error body:', text.substring(0, 500));
+                console.error('🎵 TikTok Error:', text.substring(0, 200));
                 throw new Error(`HTTP ${res.status}`);
               }
               
               const data = await res.json();
-              console.log('TikTok response:', JSON.stringify(data).substring(0, 500));
               
-              // Try different response formats
-              let followers = null;
-              if (data.followerCount) followers = data.followerCount;
-              else if (data.followers) followers = data.followers;
-              else if (data.data?.follower_count) followers = data.data.follower_count;
-              else if (data.user?.stats?.followerCount) followers = data.user.stats.followerCount;
-              else if (data.result?.followers) followers = data.result.followers;
-              else if (data.follower_count) followers = data.follower_count;
-              
-              if (!followers) {
-                console.log('Available keys:', Object.keys(data));
-                throw new Error('Follower count not found in response');
+              // Parse response - followerCount is at userInfo.stats.followerCount
+              if (!data.userInfo || !data.userInfo.stats) {
+                console.log('🎵 TikTok: Response keys:', Object.keys(data));
+                throw new Error('Unexpected response format');
               }
               
-              return { followers: parseInt(followers) };
+              const stats = data.userInfo.stats;
+              const user = data.userInfo.user;
+              const result = {
+                followers: parseInt(stats.followerCount),
+                following: parseInt(stats.followingCount),
+                likes: parseInt(stats.heartCount),
+                videos: parseInt(stats.videoCount),
+                username: user.uniqueId,
+                is_verified: user.verified
+              };
+              console.log('🎵 TikTok: ✅', result.followers, 'followers');
+              return result;
             } catch (e) {
-              console.error('❌ TikTok error:', e.message);
+              console.error('🎵 TikTok: ❌', e.message);
               return null;
             }
           }
@@ -181,10 +183,10 @@ jobs:
           async function main() {
             console.log('🔍 Fetching social stats...');
             console.log('Time:', new Date().toISOString());
-            console.log('Instagram user:', process.env.INSTAGRAM_USERNAME);
-            console.log('TikTok user:', process.env.TIKTOK_USERNAME);
+            console.log('');
             
-            const [youtube, instagram, tiktok] = await Promise.allSettled([
+            // Fetch all three
+            const [yt, ig, tt] = await Promise.all([
               fetchYouTube(),
               fetchInstagram(),
               fetchTikTok()
@@ -193,41 +195,37 @@ jobs:
             const stats = {
               updated_at: new Date().toISOString(),
               sources: {
-                youtube: youtube.status === 'fulfilled' && youtube.value ? 'api' : 'failed',
-                instagram: instagram.status === 'fulfilled' && instagram.value ? 'rapidapi' : 'failed',
-                tiktok: tiktok.status === 'fulfilled' && tiktok.value ? 'rapidapi' : 'failed'
+                youtube: yt ? 'api' : 'failed',
+                instagram: ig ? 'rapidapi' : 'failed',
+                tiktok: tt ? 'rapidapi' : 'failed'
               },
               data: {
-                youtube: youtube.status === 'fulfilled' ? youtube.value : null,
-                instagram: instagram.status === 'fulfilled' ? instagram.value : null,
-                tiktok: tiktok.status === 'fulfilled' ? tiktok.value : null
+                youtube: yt,
+                instagram: ig,
+                tiktok: tt
               },
               display: {
-                youtube: youtube.status === 'fulfilled' && youtube.value 
-                  ? formatNumber(youtube.value.subscribers) 
-                  : 'N/A',
-                instagram: instagram.status === 'fulfilled' && instagram.value 
-                  ? formatNumber(instagram.value.followers) 
-                  : 'N/A',
-                tiktok: tiktok.status === 'fulfilled' && tiktok.value 
-                  ? formatNumber(tiktok.value.followers) 
-                  : 'N/A'
+                youtube: yt ? formatNumber(yt.subscribers) : 'N/A',
+                instagram: ig ? formatNumber(ig.followers) : 'N/A',
+                tiktok: tt ? formatNumber(tt.followers) : 'N/A'
               }
             };
 
-            // Save to file
             fs.writeFileSync('stats.json', JSON.stringify(stats, null, 2));
             
-            console.log('\n✅ Stats saved:');
-            console.log(JSON.stringify(stats, null, 2));
+            console.log('');
+            console.log('📊 FINAL RESULT:');
+            console.log(JSON.stringify(stats.display, null, 2));
+            console.log('');
             
-            // Don't fail if at least one works
-            const anySuccess = stats.data.youtube || stats.data.instagram || stats.data.tiktok;
-            if (!anySuccess) {
-              console.error('\n❌ All APIs failed!');
+            // Success if at least YouTube works (most reliable)
+            if (!yt) {
+              console.error('❌ YouTube failed - check API key');
               process.exit(1);
-            } else {
-              console.log('\n⚠️ Some APIs failed, but continuing...');
+            }
+            
+            if (!ig || !tt) {
+              console.log('⚠️  Some APIs failed, but YouTube works - continuing');
             }
           }
 
@@ -240,15 +238,13 @@ jobs:
           node fetch-stats.js
 
       - name: Commit and Push
-        if: success() || failure()  # Commit even if partial failure
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Check if file exists and has changes
           if [ ! -f stats.json ]; then
-            echo "ℹ️ stats.json not created"
-            exit 0
+            echo "❌ stats.json not created"
+            exit 1
           fi
           
           if git diff --quiet stats.json; then
@@ -257,5 +253,5 @@ jobs:
           fi
           
           git add stats.json
-          git commit -m "📊 Update social stats - $(date '+%Y-%m-%d %H:%M UTC')"
+          git commit -m "📊 Update stats - $(date '+%Y-%m-%d %H:%M UTC')"
           git push
