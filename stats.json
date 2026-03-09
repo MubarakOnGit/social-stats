@@ -1,28 +1,9 @@
 {
-  "updated_at": "2026-03-09T07:49:47.141Z",
-  "sources": {
-    "youtube": "api",
-    "instagram": "rapidapi",
-    "tiktok": "rapidapi"
-  },
-  "data": {
-    "youtube": {
-      "subscribers": 5,
-      "views": 3126,
-      "videos": 6
-    },
-    "instagram": {
-      "followers": 431,
-      "following": 2,
-      "posts": 2,
-      "username": "feather__pickaxe"
-    },
-    "tiktok": {
-      "followers": 8,
-      "following": 0,
-      "likes": 38,
-      "videos": 6
-    }
+  "updated_at": "2026-03-09T08:00:19.102Z",
+  "counts": {
+    "youtube": 5,
+    "instagram": 431,
+    "tiktok": 8
   },
   "display": {
     "youtube": "5",
