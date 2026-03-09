@@ -5,8 +5,8 @@ permissions:
 
 on:
   schedule:
-    - cron: '0 * * * *'
-  workflow_dispatch:
+    - cron: '0 0 * * *'  # Midnight UTC daily (saves API calls)
+  workflow_dispatch:      # Manual button for testing
 
 jobs:
   update-stats:
@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Fetch and Update Stats
+      - name: Fetch Followers Only
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
@@ -44,31 +44,25 @@ jobs:
             }
           }
 
+          // YOUTUBE - Only subscribers
           async function fetchYouTube() {
             try {
               const url = `https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${process.env.YOUTUBE_CHANNEL_ID}&key=${process.env.YOUTUBE_API_KEY}`;
-              console.log('📺 YouTube: Fetching...');
               const res = await fetchWithTimeout(url, {}, 10000);
-              console.log('📺 YouTube: Status', res.status);
               if (!res.ok) throw new Error(`HTTP ${res.status}`);
               const data = await res.json();
-              if (!data.items || data.items.length === 0) throw new Error('No channel found');
-              const stats = data.items[0].statistics;
-              return {
-                subscribers: parseInt(stats.subscriberCount),
-                views: parseInt(stats.viewCount),
-                videos: parseInt(stats.videoCount)
-              };
+              if (!data.items?.length) throw new Error('No channel');
+              return parseInt(data.items[0].statistics.subscriberCount);
             } catch (e) {
-              console.error('📺 YouTube: ❌', e.message);
+              console.error('YouTube:', e.message);
               return null;
             }
           }
 
+          // INSTAGRAM - Only followers (RapidAPI)
           async function fetchInstagram() {
             try {
               const url = 'https://instagram120.p.rapidapi.com/api/instagram/userInfo';
-              console.log('📸 Instagram: Fetching...');
               const res = await fetchWithTimeout(url, {
                 method: 'POST',
                 headers: {
@@ -79,42 +73,29 @@ jobs:
                 body: JSON.stringify({ username: process.env.INSTAGRAM_USERNAME })
               }, 15000);
               
-              console.log('📸 Instagram: Status', res.status);
               if (!res.ok) throw new Error(`HTTP ${res.status}`);
-              
               const data = await res.json();
               
-              // Handle array format: result[0].user
+              // Extract only follower count
               let user = null;
               if (Array.isArray(data.result) && data.result.length > 0) {
                 user = data.result[0].user;
               } else if (data.result?.user) {
                 user = data.result.user;
-              } else if (data.result) {
-                user = data.result;
               }
               
-              if (!user) throw new Error('User data not found');
-              
-              const result = {
-                followers: parseInt(user.follower_count || 0),
-                following: parseInt(user.following_count || 0),
-                posts: parseInt(user.media_count || 0),
-                username: user.username || user.full_name || 'unknown'
-              };
-              
-              console.log('📸 Instagram: ✅', result.followers, 'followers');
-              return result;
+              if (!user?.follower_count) throw new Error('No followers data');
+              return parseInt(user.follower_count);
             } catch (e) {
-              console.error('📸 Instagram: ❌', e.message);
+              console.error('Instagram:', e.message);
               return null;
             }
           }
 
+          // TIKTOK - Only followers (RapidAPI)
           async function fetchTikTok() {
             try {
               const url = `https://tiktok-api23.p.rapidapi.com/api/user/info?uniqueId=${process.env.TIKTOK_USERNAME}`;
-              console.log('🎵 TikTok: Fetching...');
               const res = await fetchWithTimeout(url, {
                 method: 'GET',
                 headers: {
@@ -122,54 +103,59 @@ jobs:
                   'x-rapidapi-key': process.env.RAPIDAPI_KEY
                 }
               }, 15000);
-              console.log('🎵 TikTok: Status', res.status);
+              
               if (!res.ok) throw new Error(`HTTP ${res.status}`);
               const data = await res.json();
-              if (!data.userInfo?.stats) throw new Error('No stats found');
-              return {
-                followers: parseInt(data.userInfo.stats.followerCount),
-                following: parseInt(data.userInfo.stats.followingCount),
-                likes: parseInt(data.userInfo.stats.heartCount),
-                videos: parseInt(data.userInfo.stats.videoCount)
-              };
+              
+              if (!data.userInfo?.stats?.followerCount) throw new Error('No followers data');
+              return parseInt(data.userInfo.stats.followerCount);
             } catch (e) {
-              console.error('🎵 TikTok: ❌', e.message);
+              console.error('TikTok:', e.message);
               return null;
             }
           }
 
           function formatNumber(num) {
-            if (!num || isNaN(num)) return 'N/A';
+            if (!num || isNaN(num)) return '0';
             if (num >= 1000000) return (num/1000000).toFixed(1) + 'M';
             if (num >= 1000) return (num/1000).toFixed(1) + 'K';
-            return num.toLocaleString();
+            return num.toString();
           }
 
           async function main() {
-            console.log('🔍 Fetching social stats...');
+            console.log('Fetching followers only...');
             console.log('Time:', new Date().toISOString());
             
-            const [yt, ig, tt] = await Promise.all([fetchYouTube(), fetchInstagram(), fetchTikTok()]);
-            
+            // Fetch all three
+            const [yt, ig, tt] = await Promise.all([
+              fetchYouTube(),
+              fetchInstagram(),
+              fetchTikTok()
+            ]);
+
+            // Minimal data structure - only what website needs
             const stats = {
               updated_at: new Date().toISOString(),
-              sources: {
-                youtube: yt ? 'api' : 'failed',
-                instagram: ig ? 'rapidapi' : 'failed',
-                tiktok: tt ? 'rapidapi' : 'failed'
+              counts: {
+                youtube: yt || 0,
+                instagram: ig || 0,
+                tiktok: tt || 0
               },
-              data: { youtube: yt, instagram: ig, tiktok: tt },
               display: {
-                youtube: yt ? formatNumber(yt.subscribers) : 'N/A',
-                instagram: ig ? formatNumber(ig.followers) : 'N/A',
-                tiktok: tt ? formatNumber(tt.followers) : 'N/A'
+                youtube: formatNumber(yt || 0),
+                instagram: formatNumber(ig || 0),
+                tiktok: formatNumber(tt || 0)
               }
             };
 
             fs.writeFileSync('stats.json', JSON.stringify(stats, null, 2));
-            console.log('\n📊 FINAL RESULT:', JSON.stringify(stats.display, null, 2));
+            console.log('Saved:', stats.display);
             
-            if (!yt && !ig && !tt) process.exit(1);
+            // Fail only if all failed
+            if (!yt && !ig && !tt) {
+              console.error('All failed');
+              process.exit(1);
+            }
           }
 
           main();
@@ -182,4 +168,4 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -f stats.json
-          git diff --cached --quiet && echo "ℹ️ No changes" || (git commit -m "📊 Update stats - $(date '+%Y-%m-%d %H:%M UTC')" && git push)
+          git diff --cached --quiet && echo "No changes" || (git commit -m "📊 Daily followers update - $(date '+%Y-%m-%d')" && git push)
