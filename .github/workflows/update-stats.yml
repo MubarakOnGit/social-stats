@@ -1,5 +1,8 @@
 name: Update Social Stats
 
+permissions:
+  contents: write
+
 on:
   schedule:
     - cron: '0 * * * *'
@@ -75,22 +78,33 @@ jobs:
                 },
                 body: JSON.stringify({ username: process.env.INSTAGRAM_USERNAME })
               }, 15000);
+              
               console.log('📸 Instagram: Status', res.status);
               if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              
               const data = await res.json();
               
-              // Debug: log full response
-              console.log('📸 Instagram: Response preview:', JSON.stringify(data).substring(0, 500));
+              // Handle array format: result[0].user
+              let user = null;
+              if (Array.isArray(data.result) && data.result.length > 0) {
+                user = data.result[0].user;
+              } else if (data.result?.user) {
+                user = data.result.user;
+              } else if (data.result) {
+                user = data.result;
+              }
               
-              // Find user data in various formats
-              let user = data.result?.user || data.result || data.user;
               if (!user) throw new Error('User data not found');
               
-              return {
+              const result = {
                 followers: parseInt(user.follower_count || 0),
                 following: parseInt(user.following_count || 0),
-                posts: parseInt(user.media_count || 0)
+                posts: parseInt(user.media_count || 0),
+                username: user.username || user.full_name || 'unknown'
               };
+              
+              console.log('📸 Instagram: ✅', result.followers, 'followers');
+              return result;
             } catch (e) {
               console.error('📸 Instagram: ❌', e.message);
               return null;
@@ -133,6 +147,8 @@ jobs:
 
           async function main() {
             console.log('🔍 Fetching social stats...');
+            console.log('Time:', new Date().toISOString());
+            
             const [yt, ig, tt] = await Promise.all([fetchYouTube(), fetchInstagram(), fetchTikTok()]);
             
             const stats = {
@@ -151,9 +167,9 @@ jobs:
             };
 
             fs.writeFileSync('stats.json', JSON.stringify(stats, null, 2));
-            console.log('📊 Result:', stats.display);
+            console.log('\n📊 FINAL RESULT:', JSON.stringify(stats.display, null, 2));
             
-            if (!yt) process.exit(1);
+            if (!yt && !ig && !tt) process.exit(1);
           }
 
           main();
@@ -166,4 +182,4 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -f stats.json
-          git diff --cached --quiet && echo "No changes" || (git commit -m "📊 Update stats - $(date '+%Y-%m-%d %H:%M UTC')" && git push)
+          git diff --cached --quiet && echo "ℹ️ No changes" || (git commit -m "📊 Update stats - $(date '+%Y-%m-%d %H:%M UTC')" && git push)
