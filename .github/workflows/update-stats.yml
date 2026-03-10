@@ -4,8 +4,8 @@ permissions:
   contents: write
 
 on:
-  schedule:
-    - cron: '0 0 * * *'  # Midnight UTC daily (saves API calls)
+  #schedule:
+   # - cron: '0 0 * * *'  # Midnight UTC daily (saves API calls)
   workflow_dispatch:      # Manual button for testing
 
 jobs:
